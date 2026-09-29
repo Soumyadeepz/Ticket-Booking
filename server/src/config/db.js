@@ -2,8 +2,10 @@ import mongoose from 'mongoose';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const __dirname = process.cwd();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let localMongodProcess = null;
 
@@ -62,12 +64,7 @@ async function ensureMongoConnected(uri) {
 }
 
 export const connectDB = async () => {
-  if (mongoose.connection.readyState === 1) {
-    return;
-  }
-  const defaultAtlasUri =
-    'mongodb+srv://soumyadeepd769_db_user:MO2hsNhfjPR6X3ps@cluster0.yxfk93r.mongodb.net/ticketbook';
-  const uri = (process.env.MONGO_URI || defaultAtlasUri)
+  const uri = (process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ticketbook')
     .replace(/^["']|["']$/g, '')
     .trim();
   await ensureMongoConnected(uri);

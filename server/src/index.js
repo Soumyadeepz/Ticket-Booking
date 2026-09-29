@@ -27,32 +27,13 @@ app.use(
   })
 );
 
-// Production-aware CORS Configuration:
-// In production, strictly restrict origins to process.env.CLIENT_URL.
-const isProduction = process.env.NODE_ENV === 'production';
-const prodClientUrl = (process.env.CLIENT_URL || '').replace(/\/$/, '');
-const devAllowedOrigins = [
-  prodClientUrl,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:4173',
-].filter(Boolean);
+// Trust Vercel / reverse proxy headers for rate limiting and cookies
+app.set('trust proxy', 1);
 
+// Allow all Vercel preview/production domains, LAN IPs, and localhost with credentials
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (isProduction) {
-        if (prodClientUrl && origin.replace(/\/$/, '') === prodClientUrl) {
-          return callback(null, true);
-        }
-        return callback(new Error('CORS policy: origin not allowed in production'));
-      }
-      if (devAllowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
+    origin: true,
     credentials: true,
   })
 );
@@ -107,23 +88,12 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-let isDbConnected = false;
-export const ensureDbConnected = async () => {
-  if (isDbConnected) return;
-  await connectDB();
-  isDbConnected = true;
-  try {
-    await seedDatabase({ force: false });
-  } catch (e) {
-    console.warn('Seed check skipped:', e.message);
-  }
-};
-
 const startServer = async () => {
   try {
-    await ensureDbConnected();
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 TicketBook Server running on http://0.0.0.0:${PORT}`);
+    await connectDB();
+    await seedDatabase({ force: false });
+    app.listen(PORT, () => {
+      console.log(`🚀 TicketBook Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
     console.error('❌ Failed to start server:', err);
@@ -131,21 +101,6 @@ const startServer = async () => {
   }
 };
 
-if (!process.env.VERCEL) {
-  startServer();
-}
+startServer();
 
-export default async function serverlessHandler(req, res) {
-  await ensureDbConnected();
-  if (req.url && req.url.startsWith('/api/index')) {
-    const parsed = new URL(req.url, 'http://localhost');
-    const pathParam = parsed.searchParams.get('path') || req.query?.path;
-    if (pathParam) {
-      const subPath = Array.isArray(pathParam) ? pathParam.join('/') : pathParam;
-      parsed.searchParams.delete('path');
-      const qs = parsed.searchParams.toString();
-      req.url = `/api/${subPath.replace(/^\/+/, '')}${qs ? `?${qs}` : ''}`;
-    }
-  }
-  return app(req, res);
-}
+export default app;

@@ -4,18 +4,8 @@ let transporter = null;
 let usingEthereal = false;
 
 async function getTransporter() {
-  const smtpUser = (
-    process.env.SMTP_USER ||
-    process.env.MAIL_USER ||
-    'dassoumya387@gmail.com'
-  ).trim();
-  const smtpPass = (
-    process.env.SMTP_PASS ||
-    process.env.MAIL_PASS ||
-    'mruqaevhbbervsyi'
-  )
-    .replace(/\s+/g, '')
-    .trim();
+  const smtpUser = (process.env.SMTP_USER || process.env.MAIL_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || process.env.MAIL_PASS || '').replace(/\s+/g, '').trim();
   const smtpHost = (process.env.SMTP_HOST || process.env.MAIL_HOST || 'smtp.gmail.com').trim();
   const smtpPort = Number(process.env.SMTP_PORT || 587);
 

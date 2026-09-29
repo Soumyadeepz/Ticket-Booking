@@ -261633,8 +261633,7 @@ var require_razorpay = __commonJS({
 // server/src/index.js
 var src_exports = {};
 __export(src_exports, {
-  default: () => serverlessHandler,
-  ensureDbConnected: () => ensureDbConnected
+  default: () => src_default
 });
 module.exports = __toCommonJS(src_exports);
 var import_express7 = __toESM(require_express2(), 1);
@@ -262967,7 +262966,9 @@ var import_mongoose = __toESM(require_mongoose2(), 1);
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
 var import_path = __toESM(require("path"), 1);
-var __dirname = process.cwd();
+var import_url = require("url");
+var __filename = (0, import_url.fileURLToPath)(__importMetaUrl);
+var __dirname = import_path.default.dirname(__filename);
 var localMongodProcess = null;
 async function ensureMongoConnected(uri) {
   const isLocal = uri.includes("127.0.0.1") || uri.includes("localhost") || uri.includes("0.0.0.0");
@@ -263016,16 +263017,13 @@ async function ensureMongoConnected(uri) {
   }
 }
 var connectDB = async () => {
-  if (import_mongoose.default.connection.readyState === 1) {
-    return;
-  }
-  const defaultAtlasUri = "mongodb+srv://soumyadeepd769_db_user:MO2hsNhfjPR6X3ps@cluster0.yxfk93r.mongodb.net/ticketbook";
-  const uri = (process.env.MONGO_URI || defaultAtlasUri).replace(/^["']|["']$/g, "").trim();
+  const uri = (process.env.MONGO_URI || "mongodb://127.0.0.1:27017/ticketbook").replace(/^["']|["']$/g, "").trim();
   await ensureMongoConnected(uri);
 };
 
 // server/src/seed/seed.js
 var import_dotenv = __toESM(require_main(), 1);
+var import_url2 = require("url");
 
 // server/src/models/Event.js
 var import_mongoose2 = __toESM(require_mongoose2(), 1);
@@ -263866,7 +263864,8 @@ var seedDatabase = async ({ force = false } = {}) => {
     `\u2705 Seeded ${insertedEvents.length} events and ${showsToInsert.length} shows across ${VENUES.length} venues!`
   );
 };
-if (process.argv[1] && process.argv[1].endsWith("seed.js")) {
+var isDirectRun = process.argv[1] && (0, import_url2.fileURLToPath)(__importMetaUrl) === process.argv[1];
+if (isDirectRun) {
   (async () => {
     try {
       await connectDB();
@@ -268109,10 +268108,16 @@ var errorHandler = (err, req, res, _next) => {
 // server/src/utils/tokens.js
 var import_jsonwebtoken = __toESM(require_jsonwebtoken(), 1);
 var getAccessSecret = () => {
-  return process.env.JWT_ACCESS_SECRET || "ticketbook_super_secret_access_key_2026";
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_ACCESS_SECRET) {
+    throw new Error("FATAL: JWT_ACCESS_SECRET environment variable is required in production.");
+  }
+  return process.env.JWT_ACCESS_SECRET || "ticketbook_dev_only_access_secret";
 };
 var getRefreshSecret = () => {
-  return process.env.JWT_REFRESH_SECRET || "ticketbook_super_secret_refresh_key_2026";
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_REFRESH_SECRET) {
+    throw new Error("FATAL: JWT_REFRESH_SECRET environment variable is required in production.");
+  }
+  return process.env.JWT_REFRESH_SECRET || "ticketbook_dev_only_refresh_secret";
 };
 var generateAccessToken = (user) => {
   return import_jsonwebtoken.default.sign(
@@ -268169,8 +268174,8 @@ var import_nodemailer = __toESM(require_nodemailer(), 1);
 var transporter = null;
 var usingEthereal = false;
 async function getTransporter() {
-  const smtpUser = (process.env.SMTP_USER || process.env.MAIL_USER || "dassoumya387@gmail.com").trim();
-  const smtpPass = (process.env.SMTP_PASS || process.env.MAIL_PASS || "mruqaevhbbervsyi").replace(/\s+/g, "").trim();
+  const smtpUser = (process.env.SMTP_USER || process.env.MAIL_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || process.env.MAIL_PASS || "").replace(/\s+/g, "").trim();
   const smtpHost = (process.env.SMTP_HOST || process.env.MAIL_HOST || "smtp.gmail.com").trim();
   const smtpPort = Number(process.env.SMTP_PORT || 587);
   if (smtpUser && smtpPass) {
@@ -292761,29 +292766,10 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" }
   })
 );
-var isProduction = process.env.NODE_ENV === "production";
-var prodClientUrl = (process.env.CLIENT_URL || "").replace(/\/$/, "");
-var devAllowedOrigins = [
-  prodClientUrl,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://localhost:4173"
-].filter(Boolean);
+app.set("trust proxy", 1);
 app.use(
   (0, import_cors.default)({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (isProduction) {
-        if (prodClientUrl && origin.replace(/\/$/, "") === prodClientUrl) {
-          return callback(null, true);
-        }
-        return callback(new Error("CORS policy: origin not allowed in production"));
-      }
-      if (devAllowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
+    origin: true,
     credentials: true
   })
 );
@@ -292825,49 +292811,20 @@ app.use("/admin", adminRoutes_default);
 app.use(notFoundHandler);
 app.use(errorHandler);
 var PORT = process.env.PORT || 5e3;
-var isDbConnected = false;
-var ensureDbConnected = async () => {
-  if (isDbConnected) return;
-  await connectDB();
-  isDbConnected = true;
-  try {
-    await seedDatabase({ force: false });
-  } catch (e) {
-    console.warn("Seed check skipped:", e.message);
-  }
-};
 var startServer = async () => {
   try {
-    await ensureDbConnected();
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`\u{1F680} TicketBook Server running on http://0.0.0.0:${PORT}`);
+    await connectDB();
+    await seedDatabase({ force: false });
+    app.listen(PORT, () => {
+      console.log(`\u{1F680} TicketBook Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
     console.error("\u274C Failed to start server:", err);
     process.exit(1);
   }
 };
-if (!process.env.VERCEL) {
-  startServer();
-}
-async function serverlessHandler(req, res) {
-  await ensureDbConnected();
-  if (req.url && req.url.startsWith("/api/index")) {
-    const parsed = new URL(req.url, "http://localhost");
-    const pathParam = parsed.searchParams.get("path") || req.query?.path;
-    if (pathParam) {
-      const subPath = Array.isArray(pathParam) ? pathParam.join("/") : pathParam;
-      parsed.searchParams.delete("path");
-      const qs = parsed.searchParams.toString();
-      req.url = `/api/${subPath.replace(/^\/+/, "")}${qs ? `?${qs}` : ""}`;
-    }
-  }
-  return app(req, res);
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  ensureDbConnected
-});
+startServer();
+var src_default = app;
 /*! Bundled license information:
 
 depd/index.js:
