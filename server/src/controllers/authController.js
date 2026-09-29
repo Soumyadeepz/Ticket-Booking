@@ -288,9 +288,6 @@ function decodeGoogleJwtFallback(idToken) {
 // POST /api/auth/google
 export const googleAuth = asyncHandler(async (req, res) => {
   const idToken = req.body.credential || req.body.token;
-  const loginMode = req.body.loginMode === 'admin' ? 'admin' : 'user';
-  const isTargetAdmin = loginMode === 'admin';
-
   if (!idToken) {
     throw new AppError('Google ID token credential is required.', 400);
   }
@@ -331,31 +328,6 @@ export const googleAuth = asyncHandler(async (req, res) => {
 
   const normalizedEmail = email.toLowerCase();
 
-  // Enforce strict Single-Admin Rule: demote any dummy seeded @ticketbook.com admin records
-  await User.updateMany(
-    { email: /@ticketbook\.com$/i, $or: [{ role: 'admin' }, { isAdmin: true }] },
-    { $set: { role: 'user', isAdmin: false } }
-  );
-
-  const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-  const existingSoleAdmin = await User.findOne({
-    $or: [{ role: 'admin' }, { isAdmin: true }],
-    email: { $not: /@ticketbook\.com$/i },
-  }).sort({ createdAt: 1 });
-
-  const allowedAdminEmail = configuredAdminEmail || existingSoleAdmin?.email || null;
-
-  // If trying to log in via Admin Login tab, block everyone except the single designated Admin
-  if (isTargetAdmin && allowedAdminEmail && normalizedEmail !== allowedAdminEmail) {
-    throw new AppError(
-      `Access Denied: Only the single designated Administrator (${allowedAdminEmail}) is authorized to manage this platform.`,
-      403
-    );
-  }
-
-  const shouldGrantAdmin =
-    isTargetAdmin || (allowedAdminEmail && normalizedEmail === allowedAdminEmail);
-
   // Find a user by googleId first, then by email if not found
   let user = await User.findOne({ googleId });
   if (!user) {
@@ -363,6 +335,7 @@ export const googleAuth = asyncHandler(async (req, res) => {
   }
 
   if (!user) {
+    // No user exists: create one with isVerified: true, isAdmin: false, no password field, and store googleId
     const baseUsername = normalizedEmail
       .split('@')[0]
       .replace(/[^a-zA-Z0-9_.-]/g, '')
@@ -374,28 +347,22 @@ export const googleAuth = asyncHandler(async (req, res) => {
       username: `${baseUsername || 'user'}_${randomSuffix}`,
       email: normalizedEmail,
       googleId,
-      role: shouldGrantAdmin ? 'admin' : 'user',
-      isAdmin: Boolean(shouldGrantAdmin),
+      role: 'user',
+      isAdmin: false,
       avatar:
         picture ||
         `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(normalizedEmail)}`,
       isVerified: true,
     });
-  } else {
-    user.googleId = user.googleId || googleId;
+  } else if (!user.googleId) {
+    // User exists by email but has no googleId yet: attach googleId to that existing user
+    user.googleId = googleId;
     user.isVerified = true;
-    user.role = shouldGrantAdmin ? 'admin' : 'user';
-    user.isAdmin = Boolean(shouldGrantAdmin);
     if (picture && !user.avatar) user.avatar = picture;
     await user.save();
-  }
-
-  // Guarantee strictly ONLY ONE user in the database has Admin privileges
-  if (user.isAdmin || user.role === 'admin') {
-    await User.updateMany(
-      { _id: { $ne: user._id } },
-      { $set: { role: 'user', isAdmin: false } }
-    );
+  } else if (!user.isVerified) {
+    user.isVerified = true;
+    await user.save();
   }
 
   const accessToken = generateAccessToken(user);
@@ -405,10 +372,7 @@ export const googleAuth = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     requiresOtp: false,
-    message:
-      user.role === 'admin'
-        ? `Signed in as sole Administrator (${normalizedEmail})!`
-        : `Signed in with Google (${normalizedEmail})!`,
+    message: `Signed in with Google (${normalizedEmail})!`,
     accessToken,
     user: formatUser(user),
   });
