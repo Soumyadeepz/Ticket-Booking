@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html.dark body {
+    @apply bg-[#07070c] text-zinc-100 font-sans overflow-x-hidden transition-colors duration-300;
+    background-image: 
+      radial-gradient(circle at 15% 10%, rgba(147, 51, 234, 0.12), transparent 35%),
+      radial-gradient(circle at 85% 20%, rgba(244, 63, 94, 0.1), transparent 35%),
+      radial-gradient(circle at 50% 85%, rgba(99, 102, 241, 0.08), transparent 40%);
+    background-attachment: fixed;
+  }
+
+  html.light body {
+    @apply bg-[#f8fafc] text-slate-900 font-sans overflow-x-hidden transition-colors duration-300;
+    background-image: 
+      radial-gradient(circle at 15% 10%, rgba(147, 51, 234, 0.08), transparent 35%),
+      radial-gradient(circle at 85% 20%, rgba(244, 63, 94, 0.07), transparent 35%),
+      radial-gradient(circle at 50% 85%, rgba(99, 102, 241, 0.06), transparent 40%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-zinc-900/65 backdrop-blur-2xl border border-white/15 transition-all duration-300;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+      0 20px 50px -12px rgba(0, 0, 0, 0.75);
+  }
+
+  .glass-panel {
+    @apply bg-zinc-950/75 backdrop-blur-2xl border border-white/15 transition-all duration-300;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+      0 24px 60px -15px rgba(0, 0, 0, 0.8);
+  }
+
+  .btn-gradient {
+    @apply bg-gradient-to-r from-purple-600 via-fuchsia-600 to-rose-600 hover:from-purple-500 hover:via-fuchsia-500 hover:to-rose-500 text-white font-semibold shadow-lg shadow-purple-600/30 transition-all duration-200 active:scale-[0.98];
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-purple-400 via-fuchsia-400 to-rose-400 bg-clip-text text-transparent;
+  }
+}
+
+/* Light (White) Mode Theme Overrides with Soft Studio Aurora Lighting */
+html.light .app-shell {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html.light .ambient-beam {
+  background: radial-gradient(
+    ellipse 90% 55% at 50% -10%,
+    rgba(168, 85, 247, 0.16),
+    rgba(244, 63, 94, 0.08) 52%,
+    transparent 80%
+  ) !important;
+}
+
+html.light .ambient-orb-1 {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+
+html.light .ambient-orb-2 {
+  background-color: rgba(244, 63, 94, 0.11) !important;
+}
+
+html.light .ambient-orb-3 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+html.light .ambient-grid {
+  opacity: 0.06 !important;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.45) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.45) 1px, transparent 1px) !important;
+}
+
+html.light .glass-card {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 16px 40px -10px rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+html.light .glass-panel {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #0f172a !important;
+}
+
+html.light .glass-card .text-white:not(.keep-white),
+html.light .glass-panel .text-white:not(.keep-white),
+html.light main > div > section > div > div > .text-white:not(.keep-white) {
+  color: #0f172a !important;
+}
+
+html.light .glass-card .text-zinc-100,
+html.light .glass-card .text-zinc-200,
+html.light .glass-panel .text-zinc-100,
+html.light .glass-panel .text-zinc-200 {
+  color: #1e293b !important;
+}
+
+html.light .glass-card .text-zinc-300,
+html.light .glass-card .text-zinc-400,
+html.light .glass-panel .text-zinc-300,
+html.light .glass-panel .text-zinc-400 {
+  color: #475569 !important;
+}
+
+html.light .bg-zinc-950\/80,
+html.light .bg-zinc-950\/60,
+html.light .bg-zinc-950\/90,
+html.light .bg-zinc-900\/80,
+html.light .bg-white\/5,
+html.light .bg-white\/10 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.light input,
+html.light select {
+  color: #0f172a !important;
+}
+
+html.light footer {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light footer .text-white {
+  color: #0f172a !important;
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #6366f1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9333ea;
+}
