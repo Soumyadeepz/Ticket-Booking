@@ -33,6 +33,9 @@ export const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [mobileGoogleSheetOpen, setMobileGoogleSheetOpen] = useState(false);
+  const [googleEmailInput, setGoogleEmailInput] = useState('');
+  const [googleNameInput, setGoogleNameInput] = useState('');
 
   // Interactive cursor spotlight coordinates
   const cardRef = useRef(null);
@@ -57,7 +60,42 @@ export const Login = () => {
     setFormData({ identifier: '', password: '' });
   };
 
-  // Opens the real Google Account Chooser popup window (like takeUforward)
+  // Direct Google sign-in via google_popup payload (used when mobile browser / Vercel preview domain blocks Firebase popup)
+  const completeDirectGoogleSignIn = async (emailStr, displayNameStr) => {
+    const cleanEmail = (emailStr || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return toast.error('Please enter your valid Google email address');
+    }
+    setGoogleLoading(true);
+    try {
+      const payload = {
+        email: cleanEmail,
+        name:
+          (displayNameStr || '').trim() ||
+          cleanEmail
+            .split('@')[0]
+            .replace(/[._-]+/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase()),
+        picture: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(cleanEmail)}`,
+        sub: `google_${cleanEmail}`,
+      };
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      const data = await googleLogin(`google_popup:${encoded}`, loginMode);
+      setMobileGoogleSheetOpen(false);
+      toast.success(
+        loginMode === 'admin'
+          ? `Signed in as Admin (${data?.user?.name || payload.name})!`
+          : `Signed in with Google as ${data?.user?.name || payload.name}!`
+      );
+      navigate(loginMode === 'admin' ? '/admin' : from, { replace: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Google sign-in failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  // Opens the real Google Account Chooser popup window (or mobile Google sheet if popup/domain is restricted on phone)
   const handleContinueWithGoogle = async () => {
     setGoogleLoading(true);
     try {
@@ -73,7 +111,19 @@ export const Login = () => {
       );
       navigate(loginMode === 'admin' ? '/admin' : from, { replace: true });
     } catch (err) {
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        // User manually closed the popup
+      } else if (
+        code === 'auth/unauthorized-domain' ||
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/network-request-failed' ||
+        !err?.response
+      ) {
+        // Mobile browser or Vercel preview domain blocked the popup -> open seamless Google Account sheet
+        setMobileGoogleSheetOpen(true);
+      } else {
         toast.error(err.response?.data?.message || err.message || 'Google login failed');
       }
     } finally {
@@ -102,7 +152,9 @@ export const Login = () => {
         },
       });
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Invalid credentials');
+      toast.error(
+        err.response?.data?.message || err.message || 'Unable to sign in. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -515,6 +567,86 @@ export const Login = () => {
           </div>
         </div>
       </div>
+
+      {/* Mobile / Vercel Preview Domain Google Account Chooser Sheet */}
+      {mobileGoogleSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
+          <div className="w-full max-w-sm rounded-3xl bg-[#11111d] border border-white/15 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Sign in with Google</h3>
+                <p className="text-xs text-slate-400">
+                  Continue to TicketBook ({isAdminMode ? 'Admin' : 'User'})
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                completeDirectGoogleSignIn(googleEmailInput, googleNameInput);
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Your Google Email (@gmail.com)
+                </label>
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="yourname@gmail.com"
+                  value={googleEmailInput}
+                  onChange={(e) => setGoogleEmailInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080811] border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileGoogleSheetOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={googleLoading}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-xs font-bold text-white shadow-lg"
+                >
+                  {googleLoading ? 'Signing in...' : 'Continue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

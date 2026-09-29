@@ -1,19 +1,52 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const resolveApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
 
-// In-memory store for the 15-minute JWT access token (never persisted in localStorage)
-let inMemoryAccessToken = null;
+    // When opened on a Phone or Vercel (*.vercel.app), NEVER use localhost:5000
+    if (!isLocalHost) {
+      if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+        return envUrl;
+      }
+      // If opened via local Wi-Fi IP (e.g. 192.168.x.x), point to that IP on port 5000
+      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+        return `http://${host}:5000/api`;
+      }
+      // On Vercel (*.vercel.app) or production domain, use same-origin /api serverless function
+      return '/api';
+    }
+  }
+  return envUrl || 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+
+// Store JWT access token in memory + sessionStorage fallback for mobile browsers
+let inMemoryAccessToken =
+  typeof window !== 'undefined' ? sessionStorage.getItem('tb_access_token') : null;
 let onAuthChangeCallback = null;
 
 export const setAccessToken = (token) => {
   inMemoryAccessToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      sessionStorage.setItem('tb_access_token', token);
+    } else {
+      sessionStorage.removeItem('tb_access_token');
+    }
+  }
 };
 
 export const getAccessToken = () => inMemoryAccessToken;
 
 export const clearAccessToken = () => {
   inMemoryAccessToken = null;
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('tb_access_token');
+  }
 };
 
 export const registerAuthChangeListener = (cb) => {
@@ -22,13 +55,13 @@ export const registerAuthChangeListener = (cb) => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // Sends & receives 7-day httpOnly refreshToken cookie
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request Interceptor: Attach in-memory JWT access token
+// Request Interceptor: Attach JWT access token
 api.interceptors.request.use(
   (config) => {
     if (inMemoryAccessToken) {
@@ -57,7 +90,6 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Do not attempt silent refresh on auth endpoints themselves
     const isAuthEndpoint =
       originalRequest?.url?.includes('/auth/login') ||
       originalRequest?.url?.includes('/auth/register') ||

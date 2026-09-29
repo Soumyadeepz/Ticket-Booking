@@ -18,6 +18,9 @@ dotenv.config();
 
 const app = express();
 
+// Trust Vercel / reverse proxy headers
+app.set('trust proxy', 1);
+
 // Security Headers
 app.use(
   helmet({
@@ -27,10 +30,7 @@ app.use(
   })
 );
 
-// Trust Vercel / reverse proxy headers for rate limiting and cookies
-app.set('trust proxy', 1);
-
-// Allow all Vercel preview/production domains, LAN IPs, and localhost with credentials
+// Allow all Vercel preview/production domains, mobile browsers, LAN IPs, and localhost
 app.use(
   cors({
     origin: true,
@@ -38,7 +38,7 @@ app.use(
   })
 );
 
-// Body & Cookie Parsers (10mb limit supports base64 profile avatar & event poster uploads)
+// Body & Cookie Parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
@@ -56,7 +56,7 @@ const globalLimiter = rateLimit({
 });
 app.use('/api', globalLimiter);
 
-// Healthcheck endpoint for uptime monitors
+// Healthcheck endpoint
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
     success: true,
@@ -88,12 +88,23 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
+let isDbConnected = false;
+export const ensureDbConnected = async () => {
+  if (isDbConnected) return;
+  await connectDB();
+  isDbConnected = true;
+  try {
+    await seedDatabase({ force: false });
+  } catch (e) {
+    console.warn('Seed check skipped:', e.message);
+  }
+};
+
 const startServer = async () => {
   try {
-    await connectDB();
-    await seedDatabase({ force: false });
-    app.listen(PORT, () => {
-      console.log(`🚀 TicketBook Server running on http://localhost:${PORT}`);
+    await ensureDbConnected();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 TicketBook Server running on http://0.0.0.0:${PORT}`);
     });
   } catch (err) {
     console.error('❌ Failed to start server:', err);
@@ -101,6 +112,21 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
 
-export default app;
+export default async function serverlessHandler(req, res) {
+  await ensureDbConnected();
+  if (req.url && req.url.startsWith('/api/index')) {
+    const parsed = new URL(req.url, 'http://localhost');
+    const pathParam = parsed.searchParams.get('path') || req.query?.path;
+    if (pathParam) {
+      const subPath = Array.isArray(pathParam) ? pathParam.join('/') : pathParam;
+      parsed.searchParams.delete('path');
+      const qs = parsed.searchParams.toString();
+      req.url = `/api/${subPath.replace(/^\/+/, '')}${qs ? `?${qs}` : ''}`;
+    }
+  }
+  return app(req, res);
+}
