@@ -42,13 +42,14 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (isProduction) {
-        if (prodClientUrl && origin.replace(/\/$/, '') === prodClientUrl) {
-          return callback(null, true);
-        }
-        return callback(new Error('CORS policy: origin not allowed in production'));
+      if (
+        origin.endsWith('.vercel.app') ||
+        devAllowedOrigins.includes(origin.replace(/\/$/, '')) ||
+        !isProduction
+      ) {
+        return callback(null, true);
       }
-      if (devAllowedOrigins.includes(origin)) {
+      if (prodClientUrl && origin.replace(/\/$/, '') === prodClientUrl) {
         return callback(null, true);
       }
       return callback(null, true);
@@ -107,12 +108,23 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
+let isDbConnected = false;
+export const ensureDbConnected = async () => {
+  if (isDbConnected) return;
+  await connectDB();
+  isDbConnected = true;
+  try {
+    await seedDatabase({ force: false });
+  } catch (e) {
+    console.warn('Seed check skipped:', e.message);
+  }
+};
+
 const startServer = async () => {
   try {
-    await connectDB();
-    await seedDatabase({ force: false });
-    app.listen(PORT, () => {
-      console.log(`🚀 TicketBook Server running on http://localhost:${PORT}`);
+    await ensureDbConnected();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 TicketBook Server running on http://0.0.0.0:${PORT}`);
     });
   } catch (err) {
     console.error('❌ Failed to start server:', err);
@@ -120,6 +132,11 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
 
-export default app;
+export default async function serverlessHandler(req, res) {
+  await ensureDbConnected();
+  return app(req, res);
+}

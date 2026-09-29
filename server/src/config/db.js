@@ -4,8 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = import.meta?.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd();
 
 let localMongodProcess = null;
 
@@ -64,7 +63,12 @@ async function ensureMongoConnected(uri) {
 }
 
 export const connectDB = async () => {
-  const uri = (process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ticketbook')
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+  const defaultAtlasUri =
+    'mongodb+srv://soumyadeepd769_db_user:MO2hsNhfjPR6X3ps@cluster0.yxfk93r.mongodb.net/ticketbook';
+  const uri = (process.env.MONGO_URI || defaultAtlasUri)
     .replace(/^["']|["']$/g, '')
     .trim();
   await ensureMongoConnected(uri);

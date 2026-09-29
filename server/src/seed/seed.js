@@ -108,7 +108,8 @@ export const seedDatabase = async ({ force = false } = {}) => {
 };
 
 // Run directly if executed as CLI script
-const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isDirectRun =
+  import.meta?.url && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isDirectRun) {
   (async () => {
     try {
