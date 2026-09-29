@@ -17,6 +17,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import { ErrorState } from '../components/ErrorState';
+import { downloadBookingTicketPdf } from '../utils/ticketPdfGenerator';
 
 export const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -46,19 +47,8 @@ export const MyBookings = () => {
   const handleDownloadTicket = async (booking) => {
     try {
       setDownloadingId(booking._id);
-      const response = await api.get(`/bookings/${booking._id}/ticket`, {
-        responseType: 'blob',
-      });
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `TicketBook-${booking.bookingCode || booking._id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('Ticket PDF downloaded!');
+      const filename = await downloadBookingTicketPdf(booking);
+      toast.success(`Downloaded ${filename}!`);
     } catch (err) {
       toast.error('Could not download ticket PDF');
     } finally {

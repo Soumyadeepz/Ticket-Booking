@@ -1,5 +1,20 @@
+import Module from 'module';
 import mongoose from 'mongoose';
 import PDFDocument from 'pdfkit';
+import Helvetica from 'pdfkit/standard-fonts/Helvetica';
+import HelveticaBold from 'pdfkit/standard-fonts/HelveticaBold';
+import HelveticaOblique from 'pdfkit/standard-fonts/HelveticaOblique';
+import HelveticaBoldOblique from 'pdfkit/standard-fonts/HelveticaBoldOblique';
+import Courier from 'pdfkit/standard-fonts/Courier';
+import CourierBold from 'pdfkit/standard-fonts/CourierBold';
+import CourierOblique from 'pdfkit/standard-fonts/CourierOblique';
+import CourierBoldOblique from 'pdfkit/standard-fonts/CourierBoldOblique';
+import TimesRoman from 'pdfkit/standard-fonts/TimesRoman';
+import TimesBold from 'pdfkit/standard-fonts/TimesBold';
+import TimesItalic from 'pdfkit/standard-fonts/TimesItalic';
+import TimesBoldItalic from 'pdfkit/standard-fonts/TimesBoldItalic';
+import SymbolFont from 'pdfkit/standard-fonts/Symbol';
+import ZapfDingbats from 'pdfkit/standard-fonts/ZapfDingbats';
 import QRCode from 'qrcode';
 import { Show } from '../models/Show.js';
 import { SeatHold } from '../models/SeatHold.js';
@@ -12,6 +27,31 @@ import {
   sendCancellationEmail,
 } from '../utils/mailer.js';
 import { AppError, asyncHandler } from '../middleware/errorHandler.js';
+
+const BUNDLED_PDFKIT_FONTS = {
+  '#standard-fonts/Helvetica': Helvetica,
+  '#standard-fonts/HelveticaBold': HelveticaBold,
+  '#standard-fonts/HelveticaOblique': HelveticaOblique,
+  '#standard-fonts/HelveticaBoldOblique': HelveticaBoldOblique,
+  '#standard-fonts/Courier': Courier,
+  '#standard-fonts/CourierBold': CourierBold,
+  '#standard-fonts/CourierOblique': CourierOblique,
+  '#standard-fonts/CourierBoldOblique': CourierBoldOblique,
+  '#standard-fonts/TimesRoman': TimesRoman,
+  '#standard-fonts/TimesBold': TimesBold,
+  '#standard-fonts/TimesItalic': TimesItalic,
+  '#standard-fonts/TimesBoldItalic': TimesBoldItalic,
+  '#standard-fonts/Symbol': SymbolFont,
+  '#standard-fonts/ZapfDingbats': ZapfDingbats,
+};
+
+const origModuleLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (BUNDLED_PDFKIT_FONTS[request]) {
+    return BUNDLED_PDFKIT_FONTS[request];
+  }
+  return origModuleLoad.apply(this, arguments);
+};
 
 const generateBookingCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -412,175 +452,196 @@ export const downloadTicketPdf = asyncHandler(async (req, res) => {
     },
   });
 
-  // Optionally fetch poster image buffer if available
+  // Optionally fetch poster image buffer if available (force JPEG for PDFKit compatibility)
   let posterBuffer = null;
   if (booking.event?.posterUrl && booking.event.posterUrl.startsWith('http')) {
     try {
+      const posterFetchUrl = booking.event.posterUrl.replace(/auto=format/g, 'fm=jpg');
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const imgRes = await fetch(booking.event.posterUrl, { signal: controller.signal });
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const imgRes = await fetch(posterFetchUrl, {
+        signal: controller.signal,
+        headers: { Accept: 'image/jpeg,image/png;q=0.9' },
+      });
       clearTimeout(timeout);
       if (imgRes.ok) {
         const arrBuf = await imgRes.arrayBuffer();
-        posterBuffer = Buffer.from(arrBuf);
+        const buf = Buffer.from(arrBuf);
+        const isJpeg = buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8;
+        const isPng =
+          buf.length > 8 &&
+          buf[0] === 0x89 &&
+          buf[1] === 0x50 &&
+          buf[2] === 0x4e &&
+          buf[3] === 0x47;
+        if (isJpeg || isPng) {
+          posterBuffer = buf;
+        }
       }
     } catch {
       // Poster fallback handled gracefully below
     }
   }
 
+  const pdfBuffer = await new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: {
+        Title: `TicketBook E-Ticket - ${booking.bookingCode}`,
+        Author: 'TicketBook Cinema & Live Entertainment',
+      },
+    });
+
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', (err) => reject(err));
+
+    // Dark Header Banner
+    doc.roundedRect(40, 40, 515, 75, 14).fill('#0c0c14');
+    doc
+      .fillColor('#a855f7')
+      .fontSize(11)
+      .font('Helvetica-Bold')
+      .text('TICKETBOOK OFFICIAL E-TICKET', 62, 60);
+    doc
+      .fillColor('#ffffff')
+      .fontSize(22)
+      .font('Helvetica-Bold')
+      .text(booking.event?.title || 'Cinema Show', 62, 78, { width: 360, lineBreak: false });
+    doc
+      .fillColor('#f43f5e')
+      .fontSize(13)
+      .font('Helvetica-Bold')
+      .text(booking.bookingCode, 430, 74, { align: 'right', width: 105 });
+
+    // Main Ticket Card Body
+    doc.roundedRect(40, 130, 515, 310, 14).fillAndStroke('#181824', '#2e2e42');
+
+    // Poster Image or Styled Placeholder Box
+    if (posterBuffer) {
+      try {
+        doc.image(posterBuffer, 60, 150, { width: 115, height: 165 });
+      } catch {
+        doc.roundedRect(60, 150, 115, 165, 8).fill('#27273a');
+      }
+    } else {
+      doc.roundedRect(60, 150, 115, 165, 8).fill('#27273a');
+      doc
+        .fillColor('#a855f7')
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text(booking.event?.category || 'EVENT', 70, 225, { width: 95, align: 'center' });
+    }
+
+    const showDateStr = booking.show?.startTime
+      ? new Date(booking.show.startTime).toLocaleString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Scheduled Showtime';
+
+    // Details Column
+    const leftX = 195;
+    doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('EVENT & CATEGORY', leftX, 152);
+    doc
+      .fillColor('#ffffff')
+      .fontSize(14)
+      .font('Helvetica-Bold')
+      .text(
+        `${booking.event?.title || ''} (${booking.event?.category || 'Movie'} • ${
+          booking.event?.language || 'English'
+        })`,
+        leftX,
+        166,
+        { width: 340 }
+      );
+
+    doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('VENUE & AUDITORIUM', leftX, 204);
+    doc
+      .fillColor('#ffffff')
+      .fontSize(12)
+      .font('Helvetica')
+      .text(
+        `${booking.show?.venue?.name || 'Venue'} — ${booking.show?.venue?.screenName || 'Screen 1'}`,
+        leftX,
+        218,
+        { width: 340 }
+      );
+    doc
+      .fillColor('#d4d4d8')
+      .fontSize(10)
+      .text(
+        `${booking.show?.venue?.address || ''}, ${booking.show?.venue?.city || ''}`,
+        leftX,
+        235,
+        { width: 340 }
+      );
+
+    doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('DATE & SHOWTIME', leftX, 262);
+    doc.fillColor('#10b981').fontSize(12).font('Helvetica-Bold').text(showDateStr, leftX, 276);
+
+    doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('CONFIRMED SEATS', 60, 336);
+    doc
+      .fillColor('#ffffff')
+      .fontSize(14)
+      .font('Helvetica-Bold')
+      .text(
+        (booking.seats || []).map((s) => `${s.seatId} (${s.category})`).join(', ') ||
+          (booking.seatIds || []).join(', '),
+        60,
+        352,
+        { width: 280 }
+      );
+
+    doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('TOTAL PAID', 60, 386);
+    doc
+      .fillColor('#f43f5e')
+      .fontSize(16)
+      .font('Helvetica-Bold')
+      .text(
+        `INR ${booking.totalAmount} (${booking.paymentStatus || 'PAID'} • ${booking.status})`,
+        60,
+        402
+      );
+
+    // QR Check-in Box on Right
+    doc.roundedRect(390, 275, 145, 150, 10).fill('#ffffff');
+    doc.image(qrBuffer, 405, 282, { width: 115, height: 115 });
+    doc
+      .fillColor('#09090b')
+      .fontSize(9)
+      .font('Helvetica-Bold')
+      .text(`SCAN AT ENTRY: ${booking.bookingCode}`, 395, 404, {
+        width: 135,
+        align: 'center',
+      });
+
+    // Footer Instructions
+    doc
+      .fillColor('#71717a')
+      .fontSize(9)
+      .font('Helvetica')
+      .text(
+        'Present this PDF ticket or QR code at the venue entrance. Cancellations are allowed up to 2 hours before showtime.',
+        40,
+        460,
+        { align: 'center', width: 515 }
+      );
+
+    doc.end();
+  });
+
   res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Length', pdfBuffer.length);
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="TicketBook-${booking.bookingCode}.pdf"`
   );
-
-  const doc = new PDFDocument({
-    size: 'A4',
-    margin: 40,
-    info: {
-      Title: `TicketBook E-Ticket - ${booking.bookingCode}`,
-      Author: 'TicketBook Cinema & Live Entertainment',
-    },
-  });
-
-  doc.pipe(res);
-
-  // Dark Header Banner
-  doc.roundedRect(40, 40, 515, 75, 14).fill('#0c0c14');
-  doc
-    .fillColor('#a855f7')
-    .fontSize(11)
-    .font('Helvetica-Bold')
-    .text('TICKETBOOK OFFICIAL E-TICKET', 62, 60);
-  doc
-    .fillColor('#ffffff')
-    .fontSize(22)
-    .font('Helvetica-Bold')
-    .text(booking.event?.title || 'Cinema Show', 62, 78, { width: 360, lineBreak: false });
-  doc
-    .fillColor('#f43f5e')
-    .fontSize(13)
-    .font('Helvetica-Bold')
-    .text(booking.bookingCode, 430, 74, { align: 'right', width: 105 });
-
-  // Main Ticket Card Body
-  doc.roundedRect(40, 130, 515, 310, 14).fillAndStroke('#181824', '#2e2e42');
-
-  // Poster Image or Styled Placeholder Box
-  if (posterBuffer) {
-    try {
-      doc.image(posterBuffer, 60, 150, { width: 115, height: 165 });
-    } catch {
-      doc.roundedRect(60, 150, 115, 165, 8).fill('#27273a');
-    }
-  } else {
-    doc.roundedRect(60, 150, 115, 165, 8).fill('#27273a');
-    doc
-      .fillColor('#a855f7')
-      .fontSize(10)
-      .font('Helvetica-Bold')
-      .text(booking.event?.category || 'EVENT', 70, 225, { width: 95, align: 'center' });
-  }
-
-  const showDateStr = booking.show?.startTime
-    ? new Date(booking.show.startTime).toLocaleString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : 'Scheduled Showtime';
-
-  // Details Column
-  const leftX = 195;
-  doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('EVENT & CATEGORY', leftX, 152);
-  doc
-    .fillColor('#ffffff')
-    .fontSize(14)
-    .font('Helvetica-Bold')
-    .text(
-      `${booking.event?.title || ''} (${booking.event?.category || 'Movie'} • ${
-        booking.event?.language || 'English'
-      })`,
-      leftX,
-      166,
-      { width: 340 }
-    );
-
-  doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('VENUE & AUDITORIUM', leftX, 204);
-  doc
-    .fillColor('#ffffff')
-    .fontSize(12)
-    .font('Helvetica')
-    .text(
-      `${booking.show?.venue?.name || 'Venue'} — ${booking.show?.venue?.screenName || 'Screen 1'}`,
-      leftX,
-      218,
-      { width: 340 }
-    );
-  doc
-    .fillColor('#d4d4d8')
-    .fontSize(10)
-    .text(
-      `${booking.show?.venue?.address || ''}, ${booking.show?.venue?.city || ''}`,
-      leftX,
-      235,
-      { width: 340 }
-    );
-
-  doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('DATE & SHOWTIME', leftX, 262);
-  doc.fillColor('#10b981').fontSize(12).font('Helvetica-Bold').text(showDateStr, leftX, 276);
-
-  doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('CONFIRMED SEATS', 60, 336);
-  doc
-    .fillColor('#ffffff')
-    .fontSize(14)
-    .font('Helvetica-Bold')
-    .text(
-      (booking.seats || []).map((s) => `${s.seatId} (${s.category})`).join(', ') ||
-        (booking.seatIds || []).join(', '),
-      60,
-      352,
-      { width: 280 }
-    );
-
-  doc.fillColor('#a1a1aa').fontSize(9).font('Helvetica-Bold').text('TOTAL PAID', 60, 386);
-  doc
-    .fillColor('#f43f5e')
-    .fontSize(16)
-    .font('Helvetica-Bold')
-    .text(
-      `INR ${booking.totalAmount} (${booking.paymentStatus || 'PAID'} • ${booking.status})`,
-      60,
-      402
-    );
-
-  // QR Check-in Box on Right
-  doc.roundedRect(390, 275, 145, 150, 10).fill('#ffffff');
-  doc.image(qrBuffer, 405, 282, { width: 115, height: 115 });
-  doc
-    .fillColor('#09090b')
-    .fontSize(9)
-    .font('Helvetica-Bold')
-    .text(`SCAN AT ENTRY: ${booking.bookingCode}`, 395, 404, {
-      width: 135,
-      align: 'center',
-    });
-
-  // Footer Instructions
-  doc
-    .fillColor('#71717a')
-    .fontSize(9)
-    .font('Helvetica')
-    .text(
-      'Present this PDF ticket or QR code at the venue entrance. Cancellations are allowed up to 2 hours before showtime.',
-      40,
-      460,
-      { align: 'center', width: 515 }
-    );
-
-  doc.end();
+  res.status(200).end(pdfBuffer);
 });
