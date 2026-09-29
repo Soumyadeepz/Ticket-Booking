@@ -107,10 +107,8 @@ export const seedDatabase = async ({ force = false } = {}) => {
   );
 };
 
-// Run directly if executed as CLI script
-const isDirectRun =
-  import.meta?.url && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isDirectRun) {
+// Run directly if executed via npm run seed
+if (process.argv[1] && process.argv[1].endsWith('seed.js')) {
   (async () => {
     try {
       await connectDB();

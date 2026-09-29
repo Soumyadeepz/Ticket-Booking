@@ -431,10 +431,6 @@ export const Login = () => {
                         <Mail className="w-4 h-4 text-slate-500 group-focus-within:text-purple-400 transition-colors absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          inputMode="email"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          spellCheck={false}
                           placeholder="you@gmail.com"
                           value={formData.identifier}
                           onChange={(e) =>

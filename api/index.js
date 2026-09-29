@@ -1,3 +1,4 @@
+process.env.VERCEL='1';const __importMetaUrl=require('url').pathToFileURL(__filename).href;
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -262966,9 +262967,7 @@ var import_mongoose = __toESM(require_mongoose2(), 1);
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
 var import_path = __toESM(require("path"), 1);
-var import_url = require("url");
-var import_meta = {};
-var __dirname = import_meta?.url ? import_path.default.dirname((0, import_url.fileURLToPath)(import_meta.url)) : process.cwd();
+var __dirname = process.cwd();
 var localMongodProcess = null;
 async function ensureMongoConnected(uri) {
   const isLocal = uri.includes("127.0.0.1") || uri.includes("localhost") || uri.includes("0.0.0.0");
@@ -263027,7 +263026,6 @@ var connectDB = async () => {
 
 // server/src/seed/seed.js
 var import_dotenv = __toESM(require_main(), 1);
-var import_url2 = require("url");
 
 // server/src/models/Event.js
 var import_mongoose2 = __toESM(require_mongoose2(), 1);
@@ -263789,7 +263787,6 @@ var SEED_EVENTS = [
 ];
 
 // server/src/seed/seed.js
-var import_meta2 = {};
 import_dotenv.default.config();
 var seedDatabase = async ({ force = false } = {}) => {
   const existingCount = await Event.countDocuments();
@@ -263869,8 +263866,7 @@ var seedDatabase = async ({ force = false } = {}) => {
     `\u2705 Seeded ${insertedEvents.length} events and ${showsToInsert.length} shows across ${VENUES.length} venues!`
   );
 };
-var isDirectRun = import_meta2?.url && process.argv[1] && (0, import_url2.fileURLToPath)(import_meta2.url) === process.argv[1];
-if (isDirectRun) {
+if (process.argv[1] && process.argv[1].endsWith("seed.js")) {
   (async () => {
     try {
       await connectDB();
@@ -284577,7 +284573,6 @@ var PNG = class _PNG {
 };
 
 // server/node_modules/pdfkit/js/pdfkit.node.mjs
-var import_meta3 = {};
 var Readable = import_stream.default.Readable;
 var PDFAbstractReference = class {
   toString() {
@@ -290613,7 +290608,7 @@ function isSameDate(a, b) {
   if (a === void 0 || b === void 0) return a === b;
   return a.getTime() === b.getTime();
 }
-var ICC_PROFILE_PATH = new URL("./data/sRGB_IEC61966_2_1.icc", import_meta3.url).href;
+var ICC_PROFILE_PATH = new URL("./data/sRGB_IEC61966_2_1.icc", __importMetaUrl).href;
 var iccProfile;
 var PDFA = {
   initPDFA(pSubset) {
@@ -291727,7 +291722,7 @@ mixin(AcroFormMixin);
 mixin(AttachmentsMixin);
 mixin(SubsetMixin);
 mixin(TableMixin);
-var require$1 = (0, import_module.createRequire)(import_meta3.url);
+var require$1 = (0, import_module.createRequire)(__importMetaUrl);
 registerStdFontLoaders({
   Courier: () => require$1("#standard-fonts/Courier"),
   "Courier-Bold": () => require$1("#standard-fonts/CourierBold"),
@@ -292778,10 +292773,13 @@ app.use(
   (0, import_cors.default)({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (origin.endsWith(".vercel.app") || devAllowedOrigins.includes(origin.replace(/\/$/, "")) || !isProduction) {
-        return callback(null, true);
+      if (isProduction) {
+        if (prodClientUrl && origin.replace(/\/$/, "") === prodClientUrl) {
+          return callback(null, true);
+        }
+        return callback(new Error("CORS policy: origin not allowed in production"));
       }
-      if (prodClientUrl && origin.replace(/\/$/, "") === prodClientUrl) {
+      if (devAllowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(null, true);
@@ -292854,6 +292852,16 @@ if (!process.env.VERCEL) {
 }
 async function serverlessHandler(req, res) {
   await ensureDbConnected();
+  if (req.url && req.url.startsWith("/api/index")) {
+    const parsed = new URL(req.url, "http://localhost");
+    const pathParam = parsed.searchParams.get("path") || req.query?.path;
+    if (pathParam) {
+      const subPath = Array.isArray(pathParam) ? pathParam.join("/") : pathParam;
+      parsed.searchParams.delete("path");
+      const qs = parsed.searchParams.toString();
+      req.url = `/api/${subPath.replace(/^\/+/, "")}${qs ? `?${qs}` : ""}`;
+    }
+  }
   return app(req, res);
 }
 // Annotate the CommonJS export names for ESM import in node:
@@ -294414,3 +294422,4 @@ axios/dist/node/axios.cjs:
 @noble/ciphers/esm/utils.js:
   (*! noble-ciphers - MIT License (c) 2023 Paul Miller (paulmillr.com) *)
 */
+if(module.exports&&module.exports.default){const fn=module.exports.default;Object.assign(fn,module.exports);module.exports=fn;}

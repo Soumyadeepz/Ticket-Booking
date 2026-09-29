@@ -2,9 +2,8 @@ import mongoose from 'mongoose';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = import.meta?.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd();
+const __dirname = process.cwd();
 
 let localMongodProcess = null;
 

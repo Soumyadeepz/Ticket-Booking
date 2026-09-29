@@ -6,16 +6,13 @@ const resolveApiBaseUrl = () => {
     const host = window.location.hostname;
     const isLocalHost = host === 'localhost' || host === '127.0.0.1';
 
-    // If opened on a Phone / remote browser (not localhost), never use a localhost VITE_API_URL
     if (!isLocalHost) {
       if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
         return envUrl;
       }
-      // If opened via LAN IP (e.g. 192.168.x.x:5173 on Phone Wi-Fi), point to that LAN IP on port 5000
       if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
         return `http://${host}:5000/api`;
       }
-      // If opened on Vercel (*.vercel.app) or custom HTTPS domain, use same-origin /api serverless endpoint
       return '/api';
     }
   }
@@ -24,7 +21,6 @@ const resolveApiBaseUrl = () => {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
-// Store JWT access token in memory + sessionStorage fallback for mobile browsers (iOS Safari / Android Chrome)
 let inMemoryAccessToken =
   typeof window !== 'undefined' ? sessionStorage.getItem('tb_access_token') : null;
 let onAuthChangeCallback = null;

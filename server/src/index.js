@@ -42,14 +42,13 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (
-        origin.endsWith('.vercel.app') ||
-        devAllowedOrigins.includes(origin.replace(/\/$/, '')) ||
-        !isProduction
-      ) {
-        return callback(null, true);
+      if (isProduction) {
+        if (prodClientUrl && origin.replace(/\/$/, '') === prodClientUrl) {
+          return callback(null, true);
+        }
+        return callback(new Error('CORS policy: origin not allowed in production'));
       }
-      if (prodClientUrl && origin.replace(/\/$/, '') === prodClientUrl) {
+      if (devAllowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(null, true);
@@ -138,5 +137,15 @@ if (!process.env.VERCEL) {
 
 export default async function serverlessHandler(req, res) {
   await ensureDbConnected();
+  if (req.url && req.url.startsWith('/api/index')) {
+    const parsed = new URL(req.url, 'http://localhost');
+    const pathParam = parsed.searchParams.get('path') || req.query?.path;
+    if (pathParam) {
+      const subPath = Array.isArray(pathParam) ? pathParam.join('/') : pathParam;
+      parsed.searchParams.delete('path');
+      const qs = parsed.searchParams.toString();
+      req.url = `/api/${subPath.replace(/^\/+/, '')}${qs ? `?${qs}` : ''}`;
+    }
+  }
   return app(req, res);
 }
