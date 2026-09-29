@@ -2,21 +2,26 @@ import mongoose from 'mongoose';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = process.cwd();
 
 let localMongodProcess = null;
 
+const DEFAULT_ATLAS_URI =
+  'mongodb+srv://soumyadeepd769_db_user:MO2hsNhfjPR6X3ps@cluster0.yxfk93r.mongodb.net/ticketbook';
+
 async function ensureMongoConnected(uri) {
+  if (mongoose.connection.readyState === 1) {
+    return true;
+  }
+
   const isLocal =
     uri.includes('127.0.0.1') || uri.includes('localhost') || uri.includes('0.0.0.0');
 
-  // For MongoDB Atlas (mongodb+srv://) or remote servers, allow full 15s TLS handshake timeout
-  if (!isLocal) {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 15000 });
-    console.log(`✅ Connected to MongoDB Atlas cluster`);
+  if (!isLocal || process.env.VERCEL) {
+    const targetUri = isLocal ? DEFAULT_ATLAS_URI : uri;
+    await mongoose.connect(targetUri, { serverSelectionTimeoutMS: 12000 });
+    console.log('✅ Connected to MongoDB Atlas cluster');
     return true;
   }
 
@@ -26,7 +31,7 @@ async function ensureMongoConnected(uri) {
     return true;
   } catch {
     console.log('⚙️ Local MongoDB daemon not detected on 27017. Starting local mongod instance...');
-    const dataDir = path.resolve(__dirname, '../../.mongo-data');
+    const dataDir = path.resolve(__dirname, '.mongo-data');
     const logPath = path.resolve(dataDir, 'mongod.log');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -64,7 +69,10 @@ async function ensureMongoConnected(uri) {
 }
 
 export const connectDB = async () => {
-  const uri = (process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ticketbook')
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+  const uri = (process.env.MONGO_URI || DEFAULT_ATLAS_URI)
     .replace(/^["']|["']$/g, '')
     .trim();
   await ensureMongoConnected(uri);

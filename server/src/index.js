@@ -93,11 +93,10 @@ export const ensureDbConnected = async () => {
   if (isDbConnected) return;
   await connectDB();
   isDbConnected = true;
-  try {
-    await seedDatabase({ force: false });
-  } catch (e) {
+  // Run seed check non-blocking so serverless cold starts stay fast
+  seedDatabase({ force: false }).catch((e) => {
     console.warn('Seed check skipped:', e.message);
-  }
+  });
 };
 
 const startServer = async () => {
@@ -117,16 +116,24 @@ if (!process.env.VERCEL) {
 }
 
 export default async function serverlessHandler(req, res) {
-  await ensureDbConnected();
-  if (req.url && req.url.startsWith('/api/index')) {
-    const parsed = new URL(req.url, 'http://localhost');
-    const pathParam = parsed.searchParams.get('path') || req.query?.path;
-    if (pathParam) {
-      const subPath = Array.isArray(pathParam) ? pathParam.join('/') : pathParam;
-      parsed.searchParams.delete('path');
-      const qs = parsed.searchParams.toString();
-      req.url = `/api/${subPath.replace(/^\/+/, '')}${qs ? `?${qs}` : ''}`;
+  try {
+    await ensureDbConnected();
+    if (req.url && req.url.startsWith('/api/index')) {
+      const parsed = new URL(req.url, 'http://localhost');
+      const pathParam = parsed.searchParams.get('path') || req.query?.path;
+      if (pathParam) {
+        const subPath = Array.isArray(pathParam) ? pathParam.join('/') : pathParam;
+        parsed.searchParams.delete('path');
+        const qs = parsed.searchParams.toString();
+        req.url = `/api/${subPath.replace(/^\/+/, '')}${qs ? `?${qs}` : ''}`;
+      }
     }
+    return app(req, res);
+  } catch (err) {
+    console.error('❌ Serverless handler error:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Database connection failed on server',
+    });
   }
-  return app(req, res);
 }
