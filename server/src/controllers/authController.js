@@ -115,46 +115,36 @@ export const register = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/auth/login
+// POST /api/auth/login — Only registered users can log in
 export const login = asyncHandler(async (req, res) => {
   const { identifier, password } = req.body;
+  const normalizedIdentifier = identifier.trim().toLowerCase();
 
-  let user = await User.findOne({
-    $or: [{ email: identifier }, { username: identifier }],
+  const user = await User.findOne({
+    $or: [{ email: normalizedIdentifier }, { username: normalizedIdentifier }],
   }).select('+passwordHash');
 
   if (!user) {
-    if (!identifier.includes('@')) {
-      throw new AppError('Please enter a valid email address so we can send your 6-digit OTP.', 400);
-    }
-    const baseUsername = identifier
-      .split('@')[0]
-      .replace(/[^a-z0-9_.-]/g, '')
-      .slice(0, 22);
-    const uniqueUsername = `${baseUsername || 'user'}_${Math.floor(100 + Math.random() * 900)}`;
-    const displayName = identifier
-      .split('@')[0]
-      .replace(/[._-]+/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-
-    const passwordHash = await bcrypt.hash(password, 12);
-    user = await User.create({
-      name: displayName || 'Cinema Member',
-      username: uniqueUsername,
-      email: identifier,
-      passwordHash,
-      role: 'user',
-      isVerified: false,
-      avatar: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(uniqueUsername)}`,
-    });
-  } else {
-    // Update/set passwordHash and require 6-digit email OTP verification before issuing tokens
-    user.passwordHash = await bcrypt.hash(password, 12);
-    user.role = 'user';
-    await user.save();
+    throw new AppError(
+      'No registered account found with this email or username. Please register an account first.',
+      404
+    );
   }
 
-  await createAndSendOtp(user, 'LOGIN', 'user');
+  if (!user.passwordHash) {
+    throw new AppError(
+      'This account was created with Google Sign-In. Please click "Continue with Google" to log in.',
+      400
+    );
+  }
+
+  const isPasswordMatch = await user.comparePassword(password);
+  if (!isPasswordMatch) {
+    throw new AppError('Invalid email/username or password. Please check your credentials.', 401);
+  }
+
+  const targetRole = user.isAdmin || user.role === 'admin' ? 'admin' : 'user';
+  await createAndSendOtp(user, 'LOGIN', targetRole);
 
   res.status(200).json({
     success: true,
